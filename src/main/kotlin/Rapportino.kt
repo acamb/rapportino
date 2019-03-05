@@ -8,10 +8,7 @@ import java.nio.charset.Charset
 import java.nio.file.Paths
 import java.security.GeneralSecurityException
 import java.text.SimpleDateFormat
-import java.time.Duration
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.ZoneOffset
+import java.time.*
 import java.util.*
 
 object Rapportino {
@@ -92,8 +89,9 @@ object Rapportino {
 
     private fun getEvents(service: Calendar, month: String,year: String,calendar: String): List<CalendarEvent> {
         val df = SimpleDateFormat("dd/MM/yyyy")
+        df.isLenient=false
         val minTime = DateTime(df.parse("1/${month}/${year}"))
-        val maxTime = DateTime(df.parse("31/${month}/${year}"))
+        val maxTime = DateTime(df.parse("${YearMonth.of(Integer.parseInt(year),Integer.parseInt(month)).lengthOfMonth()}/${month}/${year}"))
         val calendars = service.CalendarList().list().execute();
         val calendarsFiltered = calendars.items.filter { it -> it.summary == calendar }
         if(calendarsFiltered.size > 0) {

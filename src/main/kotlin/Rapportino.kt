@@ -25,66 +25,82 @@ object Rapportino {
     @JvmStatic
     fun main(args: Array<String>) {
         val year: String
-        if (args.size < 1){
-            error("Usage: java -jar Rapportino.jar monthNumber [4digitYear]");
-        }
-        if (args.size == 2){
-            year = args[1]
-        }
-        else{
-            year = GregorianCalendar.getInstance().get(java.util.Calendar.YEAR).toString()
+        when(args.size){
+            0 -> error("Usage: java -jar Rapportino.jar monthNumber [4digitYear]")
+            1 -> year = GregorianCalendar.getInstance().get(java.util.Calendar.YEAR).toString()
+            2 -> year = args[1]
+            else -> error("Usage: java -jar Rapportino.jar monthNumber [4digitYear]")
         }
         val service = getCalendarService()
         val workbook = WorkbookFactory.create(TEMPLATE_FILE.toFile())
         val sheet = workbook.getSheetAt(0)
-        for(cal in config.getCalendars())
-        getEvents(service,args[0],year, cal).forEach{ event ->
-            val row = config.daysStartRow-1 + ((event.data.dayOfMonth-1)*config.nextDayRowDistance)
-            var found = false
-            for(i in 0..config.maxJobPerDay-1){
-                val cRow = row+
-                        when(cal){
-                            config.WORKTIME_CALENDAR_NAME -> config.descriptionRowDistance
-                            config.PUBLIC_HOLIDAY_CALENDAR_NAME -> config.publicHolidayRowDistance
-                            config.HOLIDAY_CALENDAR -> config.holydayRowDistance
-                            else -> error("Unsupported calendar")
-                        }
-                        +(config.nextJobRowDistance*i)
-                val descriptionCell =config.descriptionColDistance+(config.nextJobColDistance*i)
-                val hoursCell =when(cal){
-                    config.WORKTIME_CALENDAR_NAME -> config.worktimeColDistance
-                    config.PUBLIC_HOLIDAY_CALENDAR_NAME -> config.publicHolidayColDistance
-                    config.HOLIDAY_CALENDAR -> config.holidayColDistance
-                    else -> error("Unsupported calendar")
-                    }+(config.nextJobColDistance*i)
-                if( sheet.getRow(cRow)
-                        .getCellValue(descriptionCell)
-                        == null ){
-                    found = true
-                    sheet.getRow(cRow)
-                            .getCell(descriptionCell)
-                            ?.setCellValue(
-                                    when(cal){
-                                        config.WORKTIME_CALENDAR_NAME -> event.nome
-                                        config.PUBLIC_HOLIDAY_CALENDAR_NAME -> config.publicHolidayDescription
-                                        config.HOLIDAY_CALENDAR -> config.holidayDescription
-                                        else -> error("Unsupported calendar")
-                                    }
-                            )
-                    sheet.getRow(cRow)
-                            .getCell(hoursCell)
-                            ?.setCellValue(event.durata.toDouble())
-                    break
+        for(cal in config.getCalendars()) {
+            getEvents(service, args[0], year, cal).forEach { event ->
+                val row = calculateDayStartRow(event)
+                var found = false
+                for (i in 0..config.maxJobPerDay - 1) {
+                    val cRow = calculateCurrentRow(row, cal, i)
+                    val descriptionCell = getDescriptionCell(i)
+                    val hoursCell = getHoursCell(cal, i)
+                    if (sheet.getRow(cRow)
+                            .getCellValue(descriptionCell)
+                            == null) {
+                        found = true
+                        sheet.getRow(cRow)
+                                .getCell(descriptionCell)
+                                ?.setCellValue(calculateCellValue(cal, event))
+                        sheet.getRow(cRow)
+                                .getCell(hoursCell)
+                                ?.setCellValue(event.durata.toDouble())
+                        break
+                    }
                 }
-            }
-            if(!found){
-                println("Skipped event for date ${event.data}: max jobs per day reached" )
+                if (!found) {
+                    println("Skipped event for date ${event.data}: max jobs per day reached")
+                }
             }
         }
         workbook.forceFormulaRecalculation = true
         FileOutputStream(OUTPUT_FILE.toFile()).use {
             workbook.write(it)
         }
+    }
+
+    private fun calculateDayStartRow(event: CalendarEvent): Int {
+        return config.daysStartRow-1 + ((event.data.dayOfMonth-1)*config.nextDayRowDistance)
+    }
+
+    private fun getDescriptionCell(offset: Int): Int {
+        return config.descriptionColDistance+(config.nextJobColDistance*offset)
+    }
+
+    private fun calculateCellValue(calendar: String, event: CalendarEvent): String {
+        return when(calendar){
+            config.WORKTIME_CALENDAR_NAME -> event.nome
+            config.PUBLIC_HOLIDAY_CALENDAR_NAME -> config.publicHolidayDescription
+            config.HOLIDAY_CALENDAR -> config.holidayDescription
+            else -> error("Unsupported calendar")
+        }
+    }
+
+    private fun getHoursCell(calendar: String, offset: Int): Int {
+        return when(calendar){
+            config.WORKTIME_CALENDAR_NAME -> config.worktimeColDistance
+            config.PUBLIC_HOLIDAY_CALENDAR_NAME -> config.publicHolidayColDistance
+            config.HOLIDAY_CALENDAR -> config.holidayColDistance
+            else -> error("Unsupported calendar")
+        }+(config.nextJobColDistance*offset)
+    }
+
+    private fun calculateCurrentRow (row: Int,calendar : String,offset: Int) : Int {
+        return (row+
+                when(calendar){
+                    config.WORKTIME_CALENDAR_NAME -> config.descriptionRowDistance
+                    config.PUBLIC_HOLIDAY_CALENDAR_NAME -> config.publicHolidayRowDistance
+                    config.HOLIDAY_CALENDAR -> config.holydayRowDistance
+                    else -> error("Unsupported calendar")
+                }
+        +(config.nextJobRowDistance*offset))
     }
 
     private fun getEvents(service: Calendar, month: String,year: String,calendar: String): List<CalendarEvent> {
